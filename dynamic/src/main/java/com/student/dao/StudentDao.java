@@ -9,13 +9,14 @@ import com.student.util.DBConnection; // Assumes your connection class is here
 
 public class StudentDao {
 
+    // 1. Fetch Form Configuration
     public List<FormField> getFormConfiguration() {
         List<FormField> fields = new ArrayList<>();
         String query = "SELECT field_name, field_label, field_type, is_required FROM form_configuration WHERE is_active = 1 ORDER BY display_order ASC";
         
         try (Connection con = DBConnection.getConnection();
-             Statement stmt = con.createStatement();
-             ResultSet rs = stmt.executeQuery(query)) {
+             PreparedStatement ptmt = con.prepareStatement(query);
+             ResultSet rs = ptmt.executeQuery()) {
 
             while (rs.next()) {
                 String name = rs.getString("field_name");
@@ -38,6 +39,7 @@ public class StudentDao {
         return fields;
     }
 
+    // 2. Fetch Dropdown Options
     private List<String> getDropdownOptions(String fieldName, Connection con) {
         List<String> options = new ArrayList<>();
         String sql = "SELECT option_value FROM Dropdown_Options WHERE field_name = ?";
@@ -55,34 +57,47 @@ public class StudentDao {
         return options;
     }
 
+    // 3. Register Student (Dynamically generates INSERT statement)
     public boolean registerStudent(Map<String, String[]> parameterMap) {
         StringBuilder columns = new StringBuilder();
         StringBuilder values = new StringBuilder();
         List<String> paramValues = new ArrayList<>();
 
         for (String paramName : parameterMap.keySet()) {
+            // 🚨 CRITICAL FIX: Skip the "action" parameter sent by the Servlet 
+            // so it doesn't get treated as a database column.
+            if ("action".equals(paramName)) {
+                continue;
+            }
+
             columns.append(paramName).append(",");
-            values.append("?,");
+            values.append("?,"); // Protect against SQL Injection
             paramValues.add(parameterMap.get(paramName)[0]);
         }
 
+        // Clean up the trailing commas from the loops
         if (columns.length() > 0) {
             columns.deleteCharAt(columns.length() - 1);
             values.deleteCharAt(values.length() - 1);
         }
 
+        // Construct the final dynamic SQL query
         String sql = "INSERT INTO Student_Information (" + columns.toString() + ") VALUES (" + values.toString() + ")";
 
         try (Connection con = DBConnection.getConnection();
              PreparedStatement pstmt = con.prepareStatement(sql)) {
 
+            // Inject the actual user data into the '?' placeholders
             for (int i = 0; i < paramValues.size(); i++) {
                 pstmt.setString(i + 1, paramValues.get(i));
             }
+            
             int rowsAffected = pstmt.executeUpdate();
             return rowsAffected > 0;
 
         } catch (SQLException e) {
+            // It's helpful to print the generated SQL to the console if an error happens
+            System.err.println("SQL Error while executing: " + sql);
             e.printStackTrace();
             return false;
         }

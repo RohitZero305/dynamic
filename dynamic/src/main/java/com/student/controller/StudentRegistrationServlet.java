@@ -22,7 +22,7 @@ public class StudentRegistrationServlet extends HttpServlet {
 
     @Override
     protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
-        // Just forward to the JSP page. AngularJS will fetch the data via POST.
+        // Just forward the user to the JSP page. AngularJS will take over from there.
         request.getRequestDispatcher("/register.jsp").forward(request, response);
     }
 
@@ -30,30 +30,39 @@ public class StudentRegistrationServlet extends HttpServlet {
     protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
         String action = request.getParameter("action");
 
-        // 1. Handle AngularJS $http AJAX Request to get form fields
+        // Set response headers for JSON
+        response.setContentType("application/json");
+        response.setCharacterEncoding("UTF-8");
+
+        // 1. Handle AngularJS Request: Get Form Fields
         if ("getFormFields".equals(action)) {
             List<FormField> fields = studentDao.getFormConfiguration();
             
-            // Structure the response as a Map to match { success: true, fields: [...] }
             Map<String, Object> jsonResponse = new HashMap<>();
             jsonResponse.put("success", fields != null);
             jsonResponse.put("fields", fields);
             
-            response.setContentType("application/json");
-            response.setCharacterEncoding("UTF-8");
             response.getWriter().write(gson.toJson(jsonResponse));
-            return; // Stop execution here so it doesn't process registration
+            return;
         }
 
-        // 2. Handle normal Form Submission (when user clicks "Submit Registration")
-        boolean isSuccess = studentDao.registerStudent(request.getParameterMap());
+        // 2. Handle AngularJS Request: Save Student Data
+        if ("saveStudent".equals(action)) {
+            // Because we used 'params' in AngularJS, getParameterMap() will easily read the inputs
+            boolean isSuccess = studentDao.registerStudent(request.getParameterMap());
 
-        response.setContentType("text/html");
-        if (isSuccess) {
-            response.getWriter().println("<h3 style='color:green;'>Student Registered Successfully!</h3>");
-        } else {
-            response.getWriter().println("<h3 style='color:red;'>Registration Failed or Database Error.</h3>");
+            Map<String, Object> jsonResponse = new HashMap<>();
+            jsonResponse.put("success", isSuccess);
+            jsonResponse.put("message", isSuccess ? "Success" : "Database error occurred.");
+
+            response.getWriter().write(gson.toJson(jsonResponse));
+            return;
         }
-        response.getWriter().println("<br><a href='register'>Register Another Student</a>");
+        
+        // 3. Fallback for unknown actions
+        Map<String, Object> errorResponse = new HashMap<>();
+        errorResponse.put("success", false);
+        errorResponse.put("message", "Invalid action command.");
+        response.getWriter().write(gson.toJson(errorResponse));
     }
 }
